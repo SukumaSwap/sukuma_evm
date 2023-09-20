@@ -1,19 +1,18 @@
 import React, { useState, useEffect } from 'react'
-import { Paper, Grid, Title, Center, Stack, Avatar, Text, Group, ScrollArea, Box, Button, TextInput, Loader } from '@mantine/core';
+import { Paper, Grid, Title, Center, Avatar, Text, Group, ScrollArea, Box, Button, TextInput, Loader } from '@mantine/core';
 import { formatNumber, getTheme } from '../../../../app/appFunctions';
 import { IconChevronRight, IconExclamationMark, IconCheck, IconX } from '@tabler/icons';
 import { useNavigate, useParams } from 'react-router-dom';
-import { calcOfferRate, calculateNear, getTokenPrice, getReadableTokenBalance, SukMarketViewFunctionCall } from '../../../../app/nearutils';
+import { calcOfferRate, getTokenPrice, getReadableTokenBalance, SukMarketViewFunctionCall } from '../../../../app/nearutils';
 import { showNotification } from '@mantine/notifications';
 import BigNumber from 'bignumber.js';
-import { CONTRACT, NEAR_OBJECT } from '../../../../app/appconfig';
 
 import { nanoid } from 'nanoid'
 
 import { db, doc, setDoc } from '../../../../app/firebaseconfig';
+import TokenPreview from '../../../../components/common/near/TokenPreview';
 import { UserProfileCard } from '../../../../components/common/near/UserProfileCard';
 
-const instructions = `Hi there,\n 1. Say hi.\n2. Drop your details. \n3. I will send the money via the payment method I specified.\n4. I mark Trade as paid.\n5. You mark Trade as received. \n6. We rate each other positively. \n7. Deal DONE!`
 
 const OfferDetail = ({ obj }) => {
     return (
@@ -28,13 +27,12 @@ const OfferDetail = ({ obj }) => {
     )
 }
 
-
-const CreateBuyTrade = () => {
+const CreateTokenSellTrade = () => {
 
     const navigate = useNavigate()
 
-    const [pay, setPay] = useState(0) // Currency - Fiat
-    const [receive, setReceive] = useState(0) // Asset or Token
+    const [pay, setPay] = useState(0)
+    const [receive, setReceive] = useState(0)
 
     const [loading, setLoading] = useState(false)
     const [loadingOffer, setLoadingOffer] = useState(false)
@@ -43,29 +41,32 @@ const CreateBuyTrade = () => {
     const { offer_id } = useParams()
 
     const [tokenPrice, setTokenPrice] = useState(null)
+    const [nearPrice, setNearPrice] = useState(null)
     const [sendCost, setSendCost] = useState(0)
 
     const CURRENT_USD_PRICE_IN_KES = 118.75
 
     const confirmAmtToPay = (value) => {
         if (offerDetails) {
-            if (new BigNumber(value).isGreaterThan(calculateNear(offerDetails.max_amount))) {
+            if (new BigNumber(value).isGreaterThan(getReadableTokenBalance(offerDetails?.max_amount, offerDetails?.token?.decimals))) {
                 showNotification({
                     title: "Error",
-                    message: `You can only buy up to ${calculateNear(offerDetails.max_amount)} Near`,
+                    message: `You can only buy up to ${getReadableTokenBalance(offerDetails.max_amount, offerDetails?.token?.decimals)} ${offerDetails?.token?.symbol}`,
                     color: "red"
                 })
+                return
             }
-            else if (new BigNumber(value).isLessThan(calculateNear(offerDetails.min_amount))) {
+            else if (new BigNumber(value).isLessThan(getReadableTokenBalance(offerDetails?.min_amount, offerDetails?.token?.decimals))) {
                 showNotification({
                     title: "Error",
-                    message: `You can only buy at least ${calculateNear(offerDetails.min_amount)} Near`,
+                    message: `You can only buy at least ${getReadableTokenBalance(offerDetails.min_amount, offerDetails?.token?.decimals)} ${offerDetails?.token?.symbol}`,
                     color: "red"
                 })
+                return
             }
         }
     }
-//fuction for conversion fiat crypto
+
     const payChange = (value) => {
         const SELLER_NEAR_PRICE_IN_USD = calcOfferRate(offerDetails?.offer_rate, tokenPrice)
 
@@ -117,36 +118,58 @@ const CreateBuyTrade = () => {
             return
         }
 
-        if (new BigNumber(receive).isGreaterThan(calculateNear(offerDetails.max_amount))) {
+        if (new BigNumber(receive).isGreaterThan(getReadableTokenBalance(offerDetails?.max_amount, offerDetails?.token?.decimals))) {
             showNotification({
                 title: "Error",
-                message: `You can only buy up to ${calculateNear(offerDetails.max_amount)} Near`,
+                message: `You can only buy up to ${getReadableTokenBalance(offerDetails.max_amount, offerDetails?.token?.decimals)} ${offerDetails?.token?.symbol}`,
+                color: "red"
+            })
+            return
+        }
+        else if (new BigNumber(receive).isLessThan(getReadableTokenBalance(offerDetails?.min_amount, offerDetails?.token?.decimals))) {
+            showNotification({
+                title: "Error",
+                message: `You can only buy at least ${getReadableTokenBalance(offerDetails.min_amount, offerDetails?.token?.decimals)} ${offerDetails?.token?.symbol}`,
                 color: "red"
             })
             return
         }
 
         if (contract && conn && contract.add_sell_chat) {
-            const amt_ = new BigNumber(receive).multipliedBy(1e24);
+            const amt_ = new BigNumber(receive).multipliedBy(10 ** offerDetails?.token?.decimals)
             const amt = amt_.toFixed()
-            const trade_cost = amt_.multipliedBy(sendCost).toFixed()
-            const trade_cost_usd = new BigNumber(receive).multipliedBy(sendCost).multipliedBy(tokenPrice).toFixed()
+
+            // let ER_N_to_T = nearPrice / tokenPrice; 
+            // const ER_T_to_N = tokenPrice / nearPrice; 
+            // const tokens_usd = receive * tokenPrice;
+            // const tokens_in_near = (tokens_usd * ER_T_to_N ) / nearPrice;
+            // const trade_cost = new BigNumber(tokens_in_near * sendCost).toFixed();
+            // const trade_cost_usd = new BigNumber(trade_cost * nearPrice).toFixed();
+
+            // let ER_N_to_T = nearPrice / tokenPrice; 
+            const ER_T_to_N = tokenPrice / nearPrice; 
+            const tokens_usd = receive * parseFloat(tokenPrice);
+            const tokens_in_near = (tokens_usd * ER_T_to_N ) / parseFloat(nearPrice);
+            const trade_cost_near = new BigNumber(tokens_in_near).multipliedBy(sendCost) 
+            const trade_cost = trade_cost_near.multipliedBy(1e24).toFixed();
+            const trade_cost_usd = new BigNumber(tokens_in_near).multipliedBy(sendCost).multipliedBy(nearPrice);
 
             const chat = {
                 id: chat_id,
                 offer_id: offer_id,
+                token_id: offerDetails?.token?.address,
                 owner: conn.getAccountId(),
                 amount: amt,
-                payer: conn.getAccountId(),
-                receiver: offerDetails.offerer?.id,
-                payment_msg: `<b>${conn.getAccountId()}</b> will pay <b>${offerDetails?.offerer?.id}</b> <b>${offerDetails?.currency} ${formatNumber(Math.round(pay))}</b> for <b>${formatNumber(receive)} Near</b>. <br/>Approximately <b>$${formatNumber(Math.round(pay / CURRENT_USD_PRICE_IN_KES))}</b>`,
+                payer: offerDetails.offerer?.id,
+                receiver: conn.getAccountId(),
+                payment_msg: `<b>${offerDetails.offerer?.id}</b> will pay <b>${conn.getAccountId()}</b> <b>${offerDetails?.currency} ${formatNumber(Math.round(pay))}</b> for <b>${formatNumber(receive)} ${offerDetails?.token?.name}</b>. Approximately <b>$${formatNumber(Math.round(pay / CURRENT_USD_PRICE_IN_KES))}</b>`,
                 trade_cost,
-                trade_cost_usd: parseFloat(trade_cost_usd),
+                trade_cost_usd: parseFloat(trade_cost_usd)
             }
-
             console.log(chat)
+            console.log(contract)
             setLoading(true)
-            contract.add_sell_chat(chat).then(res => {
+            contract.add_token_buy_chat(chat).then(res => {
                 console.log("Chat creation", res)
                 if (res.trim() === "Offer not found".trim()) {
                     showNotification({
@@ -202,7 +225,7 @@ const CreateBuyTrade = () => {
                         message: "Offerer does not have enough balance to continue with this trade. Try another one.",
                         color: "green",
                         icon: <IconCheck />
-                    })
+                    }) 
                     // Create chat and Navigate to chat page
                     createChat(chat_id);
                 }
@@ -229,52 +252,65 @@ const CreateBuyTrade = () => {
     }
 
     const createChat = async (chat_id) => {
-        const chat_path = `/near/chats/${chat_id}`
+        const chat_path = `/near/chats/assets/${chat_id}`
         // Payer and receiver are marked in terms of KES, receiver - is the receiver of the KES in this case the receiver and vice versa
         setDoc(doc(db, "chatmsgs", chat_id), {
             messages: [],
+            payer: offerDetails.offerer?.id,
+            receiver: window?.walletConnection?.getAccountId(),
             paid: false,
             received: false,
             canceled: false,
-            released: false,
             active: true,
-            payer_has_rated: false,
-            receiver_has_rated: false,
             admin: null,
         })
         showNotification({
             title: "Chat created",
             message: "Chat created successfully",
             color: "green",
-            icon: <IconCheck />
+            icon: <IconExclamationMark />
         })
         setLoading(false)
         navigate(chat_path)
     }
- 
+
     const loadOfferDetails = () => {
         setLoadingOffer(true)
         const contract = window.contract
         const wallet = window.walletConnection
         if (contract && wallet) {
             SukMarketViewFunctionCall(wallet, {
-                methodName: "pub_get_offer",
-                args: { offer_id }
+                methodName: "pub_get_token_offer",
+                args: {offer_id}
             }).then(res => {
                 setOfferDetails(res)
+                getPrice(res?.token?.address)
             }).catch(err => {
                 console.log("Fetching offer error", err)
             })
         }
     }
 
-    const getPrice = () => {
-        getTokenPrice("wrap.testnet").then(res => {
-            setTokenPrice(res?.price)
-        }).catch(err => {
-            console.log("Token price error", err)
-        })
+    const getPrice = (address) => {
+        if (address === "wrap.testnet") {
+            getTokenPrice(address).then(res => {
+                setNearPrice(res?.price)
+                setTokenPrice(res?.price)
+            }).catch(err => {
+                // console.log("Token price error", err)
+            })
+            return
+        }
+        else {
+            getTokenPrice(address).then(res => {
+                setTokenPrice(res?.price)
+            }).catch(err => {
+                // console.log("Token price error", err)
+            })
+            return
+        }
     }
+
 
     const loadSendCost = () => {
         const wallet = window.walletConnection
@@ -285,29 +321,25 @@ const CreateBuyTrade = () => {
             }).then(res => {
                 setSendCost(res)
             }).catch(err => {
-                console.log("Fetching offer error", err)
+                console.log("Fetching sending cost error", err)
             })
         }
     }
 
     useEffect(() => {
         loadOfferDetails()
-        getPrice()
         loadSendCost()
-    }, [])
+    }, [offer_id])
 
 
     return (
         <>
-            {/* <GoBackButton /> */}
             <Paper p="xs" radius="md" sx={theme => ({
-
+                height: 'calc(100vh - 60px)',
             })}>
-                <Grid>
-                    <Grid.Col md={5}>
-                        <ScrollArea style={{
-                            height: 'calc(100vh - 115px)',
-                        }}>
+                <Grid className='h-100'>
+                    <Grid.Col md={5} className='h-100'>
+                        <ScrollArea className='h-100'>
                             <Paper px="md">
                                 <section>
                                     <UserProfileCard offerDetails={offerDetails} />
@@ -326,35 +358,18 @@ const CreateBuyTrade = () => {
                                 </section>
                                 <section>
                                     <Paper p="xs" radius="md" my="md" sx={theme => ({
-                                        background: getTheme(theme) ? theme.colors.dark[4] : theme.colors.gray[2]
+                                        background: getTheme(theme) ? theme.colors.dark[4] : theme.colors.gray[0]
                                     })}>
                                         <Title order={3}>Offer Details</Title>
-                                        <Paper p="xs" radius="md" my="sm" sx={theme => ({
-                                            background: getTheme(theme) ? theme.colors.dark[8] : theme.colors.gray[5]
-                                        })}>
-                                            <Group position='apart'>
-                                                <Group>
-                                                    <Avatar />
-                                                    <Stack spacing={0}>
-                                                        <Text size="md">Near</Text>
-                                                        <Text size="sm">NEAR</Text>
-                                                    </Stack>
-                                                </Group>
-                                                <Text sx={theme => ({
-                                                    background: getTheme(theme) ? theme.colors.dark[3] : theme.colors.gray[3],
-                                                    borderRadius: theme.radius.sm,
-                                                    padding: '2px 4px',
-                                                })}>${tokenPrice}</Text>
-                                            </Group>
-                                        </Paper>
+                                        <TokenPreview offerDetails={offerDetails} tokenPrice={tokenPrice} />
                                         <OfferDetail obj={{
                                             title: "Minimum Amount",
-                                            value: getReadableTokenBalance(offerDetails?.min_amount, 24),
+                                            value: getReadableTokenBalance(offerDetails?.min_amount, offerDetails?.token?.decimals),
                                             alignment: "end"
                                         }} />
                                         <OfferDetail obj={{
                                             title: "Maximum Amount",
-                                            value: getReadableTokenBalance(offerDetails?.max_amount, 24),
+                                            value: getReadableTokenBalance(offerDetails?.max_amount, offerDetails?.token?.decimals),
                                             alignment: "end"
                                         }} />
                                         <OfferDetail obj={{
@@ -393,19 +408,19 @@ const CreateBuyTrade = () => {
                             </Paper>
                         </ScrollArea>
                     </Grid.Col>
-                    <Grid.Col md={7}>
-                        <Paper p="xl" radius="lg" sx={theme => ({
-                            background: getTheme(theme) ? theme.colors.dark[4] : theme.colors.gray[1]
+                    <Grid.Col md={7} className='h-100'>
+                        <Paper p="xl" className='h-100' radius="lg" sx={theme => ({
+                            background: getTheme(theme) ? theme.colors.dark[4] : theme.colors.gray[0]
                         })}>
                             <Center>
                                 <Paper style={{ width: "70%", background: "transparent" }}>
                                     <Title order={3} align="center" mb="md">How much do you need?</Title>
                                     <Box px="xl">
-                                        <Text mb="sm">I will receive</Text>
+                                        <Text mb="sm">I will pay</Text>
                                         <Grid>
                                             <Grid.Col xs={1}>
                                                 <Center style={{ height: "100%" }}>
-                                                    <Avatar src={NEAR_OBJECT?.icon} />
+                                                    <Avatar src={offerDetails?.token?.icon} />
                                                 </Center>
                                             </Grid.Col>
                                             <Grid.Col xs={11}>
@@ -417,7 +432,7 @@ const CreateBuyTrade = () => {
                                         </Grid>
                                     </Box>
                                     <Box px="xl" my="md">
-                                        <Text mb="sm">I will pay</Text>
+                                        <Text mb="sm">I will receive</Text>
                                         <Grid>
                                             <Grid.Col xs={1}>
                                                 <Center style={{
@@ -450,7 +465,7 @@ const CreateBuyTrade = () => {
                                         </Group>
                                     </Center>
                                     <Text color="green" align="center" my="md">
-                                        You will receive ≈ {formatNumber(receive)} Near  for ≈ {offerDetails?.currency} {formatNumber(Math.round(pay))} ≈ ${formatNumber(Math.round(pay / CURRENT_USD_PRICE_IN_KES))}
+                                        You will pay ≈ {formatNumber(receive)} {offerDetails?.token?.symbol}  for ≈ {offerDetails?.currency} {formatNumber(Math.round(pay))} ≈ ${formatNumber(Math.round(pay / CURRENT_USD_PRICE_IN_KES))}
                                     </Text>
                                 </Paper>
                             </Center>
@@ -462,4 +477,4 @@ const CreateBuyTrade = () => {
     )
 }
 
-export default CreateBuyTrade
+export default CreateTokenSellTrade

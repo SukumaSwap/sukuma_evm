@@ -1,19 +1,18 @@
 import React, { useState, useEffect } from 'react'
-import { Paper, Grid, Title, Center, Stack, Avatar, Text, Group, ScrollArea, Box, Button, TextInput, Loader } from '@mantine/core';
-import { formatNumber, getTheme } from '../../../../app/appFunctions';
-import { IconChevronRight, IconExclamationMark, IconCheck, IconX } from '@tabler/icons';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Paper, Grid, Title, Center, Stack, Avatar, Text, Group, ScrollArea, Box, Button, NumberInput, TextInput, Loader } from '@mantine/core';
+import { formatNumber, getTextCount, getTheme, greenGradientBg } from '../../../../app/appFunctions';
+import { IconChevronRight, IconThumbDown, IconThumbUp, IconExclamationMark, IconCheck, IconX } from '@tabler/icons';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { calcOfferRate, calculateNear, getTokenPrice, getReadableTokenBalance, SukMarketViewFunctionCall } from '../../../../app/nearutils';
 import { showNotification } from '@mantine/notifications';
 import BigNumber from 'bignumber.js';
-import { CONTRACT, NEAR_OBJECT } from '../../../../app/appconfig';
+import { NEAR_OBJECT } from '../../../../app/appconfig';
 
 import { nanoid } from 'nanoid'
 
 import { db, doc, setDoc } from '../../../../app/firebaseconfig';
 import { UserProfileCard } from '../../../../components/common/near/UserProfileCard';
 
-const instructions = `Hi there,\n 1. Say hi.\n2. Drop your details. \n3. I will send the money via the payment method I specified.\n4. I mark Trade as paid.\n5. You mark Trade as received. \n6. We rate each other positively. \n7. Deal DONE!`
 
 const OfferDetail = ({ obj }) => {
     return (
@@ -29,12 +28,12 @@ const OfferDetail = ({ obj }) => {
 }
 
 
-const CreateBuyTrade = () => {
+const CreateSellTrade = () => {
 
     const navigate = useNavigate()
 
-    const [pay, setPay] = useState(0) // Currency - Fiat
-    const [receive, setReceive] = useState(0) // Asset or Token
+    const [pay, setPay] = useState(0) // Fiat
+    const [receive, setReceive] = useState(0) // Token or Asset
 
     const [loading, setLoading] = useState(false)
     const [loadingOffer, setLoadingOffer] = useState(false)
@@ -65,7 +64,7 @@ const CreateBuyTrade = () => {
             }
         }
     }
-//fuction for conversion fiat crypto
+
     const payChange = (value) => {
         const SELLER_NEAR_PRICE_IN_USD = calcOfferRate(offerDetails?.offer_rate, tokenPrice)
 
@@ -126,27 +125,26 @@ const CreateBuyTrade = () => {
             return
         }
 
-        if (contract && conn && contract.add_sell_chat) {
+        if (contract && conn && contract.add_buy_chat) {
             const amt_ = new BigNumber(receive).multipliedBy(1e24);
             const amt = amt_.toFixed()
             const trade_cost = amt_.multipliedBy(sendCost).toFixed()
             const trade_cost_usd = new BigNumber(receive).multipliedBy(sendCost).multipliedBy(tokenPrice).toFixed()
-
+            
             const chat = {
                 id: chat_id,
                 offer_id: offer_id,
                 owner: conn.getAccountId(),
                 amount: amt,
-                payer: conn.getAccountId(),
-                receiver: offerDetails.offerer?.id,
-                payment_msg: `<b>${conn.getAccountId()}</b> will pay <b>${offerDetails?.offerer?.id}</b> <b>${offerDetails?.currency} ${formatNumber(Math.round(pay))}</b> for <b>${formatNumber(receive)} Near</b>. <br/>Approximately <b>$${formatNumber(Math.round(pay / CURRENT_USD_PRICE_IN_KES))}</b>`,
+                payer: offerDetails.offerer?.id,
+                receiver: conn.getAccountId(),
+                payment_msg: `<b>${offerDetails?.offerer?.id}</b> will pay <b>${conn.getAccountId()}</b> <b>${offerDetails?.currency} ${formatNumber(Math.round(pay))}</b> for <b>${formatNumber(receive)} Near</b>. <br/>Approximately <b>$${formatNumber(Math.round(pay / CURRENT_USD_PRICE_IN_KES))}</b>`,
                 trade_cost,
-                trade_cost_usd: parseFloat(trade_cost_usd),
+                trade_cost_usd: parseFloat(trade_cost_usd)
             }
-
-            console.log(chat)
+            console.log("chat", chat)
             setLoading(true)
-            contract.add_sell_chat(chat).then(res => {
+            contract.add_buy_chat(chat).then(res => {
                 console.log("Chat creation", res)
                 if (res.trim() === "Offer not found".trim()) {
                     showNotification({
@@ -199,7 +197,7 @@ const CreateBuyTrade = () => {
                 else if (res.trim() === "created".trim()) {
                     showNotification({
                         title: "Chat saved",
-                        message: "Offerer does not have enough balance to continue with this trade. Try another one.",
+                        message: "Chat created",
                         color: "green",
                         icon: <IconCheck />
                     })
@@ -251,7 +249,7 @@ const CreateBuyTrade = () => {
         setLoading(false)
         navigate(chat_path)
     }
- 
+
     const loadOfferDetails = () => {
         setLoadingOffer(true)
         const contract = window.contract
@@ -259,21 +257,13 @@ const CreateBuyTrade = () => {
         if (contract && wallet) {
             SukMarketViewFunctionCall(wallet, {
                 methodName: "pub_get_offer",
-                args: { offer_id }
+                args: {offer_id}
             }).then(res => {
                 setOfferDetails(res)
             }).catch(err => {
                 console.log("Fetching offer error", err)
             })
         }
-    }
-
-    const getPrice = () => {
-        getTokenPrice("wrap.testnet").then(res => {
-            setTokenPrice(res?.price)
-        }).catch(err => {
-            console.log("Token price error", err)
-        })
     }
 
     const loadSendCost = () => {
@@ -288,6 +278,14 @@ const CreateBuyTrade = () => {
                 console.log("Fetching offer error", err)
             })
         }
+    }
+
+    const getPrice = () => {
+        getTokenPrice("wrap.testnet").then(res => {
+            setTokenPrice(res?.price)
+        }).catch(err => {
+            console.log("Token price error", err)
+        })
     }
 
     useEffect(() => {
@@ -401,7 +399,7 @@ const CreateBuyTrade = () => {
                                 <Paper style={{ width: "70%", background: "transparent" }}>
                                     <Title order={3} align="center" mb="md">How much do you need?</Title>
                                     <Box px="xl">
-                                        <Text mb="sm">I will receive</Text>
+                                        <Text mb="sm">I will Pay</Text>
                                         <Grid>
                                             <Grid.Col xs={1}>
                                                 <Center style={{ height: "100%" }}>
@@ -417,7 +415,7 @@ const CreateBuyTrade = () => {
                                         </Grid>
                                     </Box>
                                     <Box px="xl" my="md">
-                                        <Text mb="sm">I will pay</Text>
+                                        <Text mb="sm">I will receive</Text>
                                         <Grid>
                                             <Grid.Col xs={1}>
                                                 <Center style={{
@@ -450,7 +448,7 @@ const CreateBuyTrade = () => {
                                         </Group>
                                     </Center>
                                     <Text color="green" align="center" my="md">
-                                        You will receive ≈ {formatNumber(receive)} Near  for ≈ {offerDetails?.currency} {formatNumber(Math.round(pay))} ≈ ${formatNumber(Math.round(pay / CURRENT_USD_PRICE_IN_KES))}
+                                        You will pay ≈ {formatNumber(receive)} Near  for ≈ {offerDetails?.currency} {formatNumber(Math.round(pay))} ≈ ${formatNumber(Math.round(pay / CURRENT_USD_PRICE_IN_KES))}
                                     </Text>
                                 </Paper>
                             </Center>
@@ -462,4 +460,4 @@ const CreateBuyTrade = () => {
     )
 }
 
-export default CreateBuyTrade
+export default CreateSellTrade
