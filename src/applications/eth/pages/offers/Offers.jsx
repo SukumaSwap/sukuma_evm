@@ -10,13 +10,13 @@ import { getReadableTokenBalance } from '../../../../app/nearutils';
 const offers = [
     {
         id: "offer-1",
-        offerer: 'dalmasonto.testnet',
+        offerer: '0x9a3387365e5c7268a71eabb40dc9e9774822f88d',
         max: '140',
         min: '30',
         token: {
-            title: 'Near',
+            title: 'Base',
             icon: '',
-            asset: 'near',
+            asset: 'ETH',
         },
         payment: {
             id: "bank",
@@ -28,13 +28,13 @@ const offers = [
     },
     {
         id: "offer-2",
-        offerer: 'dalmasonto.testnet',
+        offerer: '0x73ca5d851b0fee5d7287d55d746ef7eac3b3069e',
         max: '100',
         min: '30',
         token: {
-            title: 'Near',
+            title: 'Polygon',
             icon: '',
-            asset: 'near',
+            asset: 'matic',
         },
         payment: {
             id: "m-pesa",
@@ -94,7 +94,7 @@ const Asset = ({ }) => {
             }
         })}>
             <Avatar />
-            <Text>Near</Text>
+            <Text>BASE</Text>
         </Group>
     )
 }
@@ -151,10 +151,10 @@ const offers_ = [
     {
         id: "someid",
         offer_type: 'buy',
-        offerer: 'alexmatu.testnet',
+        offerer: '0x9a3387365e5c7268a71eabb40dc9e9774822f88d',
         min_amount: '200',
         max_amount: '300',
-        token: 'near',
+        token: 'ETH',
         offer_rate: 1,
         active: true,
         payment: 'M-Pesa',
