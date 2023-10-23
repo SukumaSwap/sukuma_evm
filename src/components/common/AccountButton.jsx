@@ -21,6 +21,7 @@ import { showNotification } from "@mantine/notifications";
 import { useMantineTheme } from "@mantine/core";
 import { useNavigate } from "react-router-dom";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+
 function ConnectWalletButton() {
   const network = useSelector(selectNetwork);
   const dologin = () => {
@@ -51,7 +52,7 @@ function ConnectWalletButton() {
         </Button>
       ) : (
         <>
-        <ConnectButton/>
+          <ConnectButton />
         </>
       )}
     </>
